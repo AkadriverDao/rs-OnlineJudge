@@ -12,6 +12,8 @@
     body{background:#f8f9fa}
     .card{max-width:800px;margin:40px auto;border-radius:1rem}
     #code{min-height:300px;font-family:'Fira Code',monospace}
+    .output{margin-top:1.5rem}
+    .output pre{background:#f5f5f5;border:1px solid #ddd;border-radius:.375rem;padding:.75rem;font-size:.875rem;white-space:pre-wrap;word-break:break-word}
   </style>
 </head>
 <body>
@@ -30,12 +32,17 @@
                 placeholder="在这里粘贴代码...">
 #include <iostream>
 int main() {
-    std::cout << 42;
+    std::cout << "Hello World" << std::endl;
     return 0;
 }
       </textarea>
 
       <button id="send" class="btn btn-success w-100">提 交</button>
+
+      <div id="output" class="output" style="display:none">
+        <h5>运行结果</h5>
+        <pre id="result"></pre>
+      </div>
     </div>
   </div>
 
@@ -58,17 +65,45 @@ int main() {
           body: payload
         });
 
-        const text = await res.text();
+        const taskId = await res.text();
         Swal.close();
-        if (res.ok) {
-          Swal.fire({ icon: 'success', title: '提交成功！', text });
-        } else {
-          Swal.fire({ icon: 'error', title: '提交失败', text });
-        }
+
+        // 轮询 /result
+        pollResult(taskId);
       } catch (err) {
         Swal.fire({ icon: 'error', title: '网络错误', text: err.message });
       }
     };
+
+    async function pollResult(taskId) {
+      Swal.fire({
+        title: '正在运行...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      const poll = async () => {
+        const res   = await fetch(`/result/${taskId}`);
+        const data  = await res.json();
+
+        if (res.status === 404) {
+          Swal.fire({ icon: 'error', title: '任务丢失', text: '未找到该任务' });
+          return;
+        }
+
+        if (data.status === 'running') {
+          // 继续轮询
+          setTimeout(poll, 500);
+          return;
+        }
+
+        Swal.close();
+        document.getElementById('output').style.display = 'block';
+        document.getElementById('result').textContent = data.result;
+      };
+
+      await poll();
+    }
   </script>
 </body>
 </html>

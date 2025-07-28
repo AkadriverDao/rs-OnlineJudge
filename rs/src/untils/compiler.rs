@@ -2,7 +2,6 @@ use std::{fs, io, path::Path, process::{Command, Stdio}};
 
 use serde::Deserialize;
 
-use crate::submit;
 
 #[derive(Deserialize)]
 pub struct SubmitReq {
