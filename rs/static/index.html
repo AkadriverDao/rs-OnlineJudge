@@ -8,12 +8,37 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <!-- SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Fira Code 字体 -->
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body{background:#f8f9fa}
-    .card{max-width:800px;margin:40px auto;border-radius:1rem}
-    #code{min-height:300px;font-family:'Fira Code',monospace}
-    .output{margin-top:1.5rem}
-    .output pre{background:#f5f5f5;border:1px solid #ddd;border-radius:.375rem;padding:.75rem;font-size:.875rem;white-space:pre-wrap;word-break:break-word}
+    body { background: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .card { max-width: 800px; margin: 40px auto; border-radius: 1rem; border: none; }
+    .card-header { border-radius: 1rem 1rem 0 0 !important; }
+    #code { min-height: 300px; font-family: 'Fira Code', monospace; font-size: 0.9rem; }
+    .output { margin-top: 1.5rem; }
+    .output pre { 
+      background: #282c34; 
+      color: #abb2bf; 
+      border: 1px solid #ddd; 
+      border-radius: .375rem; 
+      padding: 1rem; 
+      font-size: 0.875rem; 
+      white-space: pre-wrap; 
+      word-break: break-word; 
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .problem-selector { margin-bottom: 15px; }
+    .problem-description { 
+      margin: 15px 0; 
+      padding: 15px; 
+      background: #fff; 
+      border-radius: .5rem; 
+      border: 1px solid #eee;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .form-select, .form-control { border-radius: 0.5rem; }
+    .btn { border-radius: 0.5rem; padding: 0.5rem 1.5rem; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -22,22 +47,40 @@
       <h4 class="mb-0">在线代码提交</h4>
     </div>
     <div class="card-body">
-      <select id="lang" class="form-select mb-3">
-        <option value="cpp">C++17</option>
-        <option value="python">Python 3</option>
-        <option value="rust">Rust</option>
-      </select>
+      <!-- 题目选择器 -->
+      <div class="problem-selector">
+        <label for="problem" class="form-label">选择题目</label>
+        <select id="problem" class="form-select">
+          <option value="">加载题目中...</option>
+        </select>
+      </div>
+      
+      <!-- 题目描述区域 -->
+      <div id="problemDescription" class="problem-description">
+        <h5>题目描述</h5>
+        <div id="problemContent">请先选择一个题目</div>
+      </div>
+      
+      <div class="mb-3">
+        <label for="lang" class="form-label">编程语言</label>
+        <select id="lang" class="form-select">
+          <option value="cpp">C++17</option>
+          <option value="python">Python 3</option>
+          <option value="rust">Rust</option>
+        </select>
+      </div>
 
-      <textarea id="code" class="form-control mb-3"
-                placeholder="在这里粘贴代码...">
-#include <iostream>
-int main() {
-    std::cout << "Hello World" << std::endl;
-    return 0;
-}
-      </textarea>
+      <div class="mb-3">
+        <label for="code" class="form-label">代码编辑器</label>
+        <textarea id="code" class="form-control" placeholder="在这里粘贴代码..."></textarea>
+      </div>
 
-      <button id="send" class="btn btn-success w-100">提 交</button>
+      <button id="send" class="btn btn-success w-100">
+        <span id="submitText">提 交</span>
+        <div id="spinner" class="spinner-border spinner-border-sm d-none" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </button>
 
       <div id="output" class="output" style="display:none">
         <h5>运行结果</h5>
@@ -47,62 +90,242 @@ int main() {
   </div>
 
   <script>
-    document.getElementById('send').onclick = async () => {
-      const lang = document.getElementById('lang').value;
-      const code = document.getElementById('code').value;
-      const payload = JSON.stringify({ lang, code });
+    // 使用Fetch API获取题目
+    async function fetchQuestions() {
+      try {
+        const response = await fetch('http://localhost:3000/api/questions');
+        if (!response.ok) throw new Error('Network response was not ok');
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching questions:', error);
+        throw error;
+      }
+    }
 
-      Swal.fire({
-        title: '提交中...',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
+    async function fetchQuestion(id) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/questions/${id}`);
+        if (!response.ok) throw new Error('Question not found');
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching question:', error);
+        throw error;
+      }
+    }
+
+    // 初始化页面
+    document.addEventListener('DOMContentLoaded', async function() {
+      const problemSelect = document.getElementById('problem');
+      const langSelect = document.getElementById('lang');
+      const codeArea = document.getElementById('code');
+      const problemContent = document.getElementById('problemContent');
+      const submitBtn = document.getElementById('send');
+      const submitText = document.getElementById('submitText');
+      const spinner = document.getElementById('spinner');
+      
+      try {
+        // 从API获取题目列表
+        const questions = await fetchQuestions();
+        
+        // 清空加载选项
+        problemSelect.innerHTML = '';
+        
+        // 添加默认选项
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '-- 请选择题目 --';
+        problemSelect.appendChild(defaultOption);
+        
+        // 添加题目选项
+        questions.forEach(question => {
+          const option = document.createElement('option');
+          option.value = question.id;
+          option.textContent = question.title;
+          problemSelect.appendChild(option);
+        });
+        
+      } catch (error) {
+        problemSelect.innerHTML = '<option value="">加载题目失败</option>';
+        Swal.fire({
+          icon: 'error',
+          title: '加载题目失败',
+          text: '无法从服务器获取题目列表，请刷新重试'
+        });
+        return;
+      }
+      
+      // 题目选择变化事件
+      problemSelect.addEventListener('change', async function() {
+        if (!this.value) {
+          problemContent.innerHTML = '请先选择一个题目';
+          codeArea.value = '';
+          return;
+        }
+        
+        try {
+          const question = await fetchQuestion(this.value);
+          problemContent.innerHTML = `
+            <h6>${question.title}</h6>
+            <p>${question.description.replace(/\n/g, '<br>')}</p>
+          `;
+          
+          // 设置默认代码模板（如果有）
+          const lang = langSelect.value;
+          if (question.templates && question.templates[lang]) {
+            codeArea.value = question.templates[lang] || '';
+          } else {
+            // 如果没有模板，清空代码区域
+            codeArea.value = '';
+          }
+        } catch (error) {
+          problemContent.innerHTML = '加载题目详情失败';
+          Swal.fire({
+            icon: 'error',
+            title: '加载题目失败',
+            text: '无法获取题目详情，请重试'
+          });
+        }
+      });
+      
+      // 语言选择变化事件
+      langSelect.addEventListener('change', function() {
+        const selectedProblemId = problemSelect.value;
+        if (selectedProblemId) {
+          // 这里可以优化为从API获取特定语言的模板
+          // 但为了简单起见，我们暂时清空代码区域
+          codeArea.value = '';
+        }
       });
 
-      try {
-        const res = await fetch('/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
+      // 提交按钮点击事件
+      submitBtn.addEventListener('click', async () => {
+        const code = codeArea.value.trim();
+        if (!code) {
+          Swal.fire({
+            icon: 'warning',
+            title: '代码不能为空',
+            text: '请输入要提交的代码'
+          });
+          return;
+        }
+
+        const selectedProblemId = problemSelect.value;
+        if (!selectedProblemId) {
+          Swal.fire({
+            icon: 'warning',
+            title: '请选择题目',
+            text: '请先从下拉菜单中选择一个题目'
+          });
+          return;
+        }
+
+        const lang = langSelect.value;
+        const payload = JSON.stringify({ 
+          lang, 
+          code,
+          problem_id: selectedProblemId
         });
 
-        const taskId = await res.text();
-        Swal.close();
+        // 禁用按钮并显示加载状态
+        submitBtn.disabled = true;
+        submitText.textContent = '提交中...';
+        spinner.classList.remove('d-none');
+        document.getElementById('output').style.display = 'none';
 
-        // 轮询 /result
-        pollResult(taskId);
-      } catch (err) {
-        Swal.fire({ icon: 'error', title: '网络错误', text: err.message });
-      }
-    };
+        try {
+          const res = await fetch('/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          });
 
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+
+          const taskId = await res.text();
+          
+          // 开始轮询结果
+          await pollResult(taskId);
+        } catch (err) {
+          console.error('提交错误:', err);
+          Swal.fire({ 
+            icon: 'error', 
+            title: '提交失败', 
+            text: err.message || '网络错误，请重试' 
+          });
+        } finally {
+          // 恢复按钮状态
+          submitBtn.disabled = false;
+          submitText.textContent = '提 交';
+          spinner.classList.add('d-none');
+        }
+      });
+    });
+
+    // 轮询结果函数
     async function pollResult(taskId) {
+      const resultContainer = document.getElementById('result');
+      const outputDiv = document.getElementById('output');
+      
+      // 使用 SweetAlert 显示加载状态
       Swal.fire({
-        title: '正在运行...',
+        title: '代码运行中...',
+        html: '这可能需要几秒钟时间',
         allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
+        didOpen: () => {
+          Swal.showLoading();
+        }
       });
 
-      const poll = async () => {
-        const res   = await fetch(`/result/${taskId}`);
-        const data  = await res.json();
-
-        if (res.status === 404) {
-          Swal.fire({ icon: 'error', title: '任务丢失', text: '未找到该任务' });
-          return;
+      const maxAttempts = 20; // 最大尝试次数
+      let attempts = 0;
+      
+      const checkResult = async () => {
+        try {
+          const res = await fetch(`/result/${taskId}`);
+          
+          if (res.status === 404) {
+            throw new Error('任务未找到，可能已过期');
+          }
+          
+          const data = await res.json();
+          
+          if (data.status === 'running') {
+            attempts++;
+            if (attempts >= maxAttempts) {
+              throw new Error('运行超时，请重试');
+            }
+            // 指数退避
+            const delay = Math.min(1000 * Math.pow(1.5, attempts), 5000);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return checkResult();
+          }
+          
+          // 运行完成
+          Swal.close();
+          outputDiv.style.display = 'block';
+          resultContainer.textContent = data.result;
+          
+          // 如果结果包含错误信息，改变输出框样式
+          if (data.result.toLowerCase().includes('error') || 
+              data.result.toLowerCase().includes('失败')) {
+            resultContainer.style.color = '#f56c6c';
+          } else {
+            resultContainer.style.color = '#67c23a';
+          }
+          
+        } catch (err) {
+          Swal.fire({
+            icon: 'error',
+            title: '获取结果失败',
+            text: err.message
+          });
+          throw err;
         }
-
-        if (data.status === 'running') {
-          // 继续轮询
-          setTimeout(poll, 500);
-          return;
-        }
-
-        Swal.close();
-        document.getElementById('output').style.display = 'block';
-        document.getElementById('result').textContent = data.result;
       };
-
-      await poll();
+      
+      await checkResult();
     }
   </script>
 </body>

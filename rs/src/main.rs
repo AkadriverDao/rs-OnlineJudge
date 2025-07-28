@@ -13,7 +13,9 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use uuid::Uuid;
 
 mod untils; // 确保同目录下有 untils/mod.rs
+mod question_service;
 use crate::untils::{compiler::Compiler, execute::Execute,compiler::SubmitReq};
+use crate::question_service::init_question_service;
 
 #[derive(Clone)]
 pub enum TaskStatus {
@@ -103,10 +105,11 @@ pub async fn result(
 #[tokio::main]
 async fn main() {
     let state: TaskMap = Arc::new(Mutex::new(HashMap::new()));
-
+    let question_router = init_question_service().1;
     let app = Router::new()
         .route("/submit", post(submit))
         .route("/result/:task_id", get(result))
+        .nest_service("/api", question_router) // 合并题目路由
         .nest_service(
             "/",
             ServeDir::new("static").append_index_html_on_directories(true),
