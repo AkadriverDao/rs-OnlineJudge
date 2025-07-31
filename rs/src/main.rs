@@ -15,7 +15,7 @@ use uuid::Uuid;
 mod untils; // 确保同目录下有 untils/mod.rs
 mod question_service;
 use crate::untils::{compiler::Compiler, execute::Execute,compiler::SubmitReq};
-use crate::question_service::init_question_service;
+use crate::question_service::{init_question_service, save};
 
 #[derive(Clone)]
 pub enum TaskStatus {
@@ -109,6 +109,7 @@ async fn main() {
     let app = Router::new()
         .route("/submit", post(submit))
         .route("/result/:task_id", get(result))
+        .route("/save", post(save))
         .nest_service("/api", question_router) // 合并题目路由
         .nest_service(
             "/",

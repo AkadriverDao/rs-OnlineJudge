@@ -12,8 +12,6 @@ pub struct Question {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Templates {
     pub cpp: Option<String>,
-    pub python: Option<String>,
-    pub rust: Option<String>,
 }
 
 impl Question {
